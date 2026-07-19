@@ -1,10 +1,11 @@
-# Ensures native build tools are present on Railway so that
-# @discordjs/opus and libsodium-wrappers compile correctly.
-[phases.setup]
-nixPkgs = ["...", "python3", "gcc", "gnumake"]
+# With @discordjs/opus removed (see package.json), Nocturne no longer needs
+# a C/C++ toolchain at install time -- every dependency (opusscript, mediaplex,
+# ffmpeg-static) ships as pure JS or a prebuilt native binary. This keeps the
+# Railway build fast and avoids the native-compile failures that older
+# node-gyp-based packages run into on newer glibc/GCC images.
 
 [phases.install]
-cmds = ["npm ci --omit=dev || npm install --omit=dev"]
+cmds = ["npm install --omit=dev"]
 
 [start]
 cmd = "node src/index.js"
