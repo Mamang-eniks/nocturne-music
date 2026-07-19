@@ -1,40 +1,29 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const GuildModel = require("../../models/Guild");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const Blacklist = require('../../models/Blacklist');
 
 module.exports = {
-  name: "whitelist",
-  category: "owner",
-  description: "Remove a user from the blacklist in this server (owner only).",
-  ownerOnly: true,
-  noPrefix: true,
-  data: new SlashCommandBuilder()
-    .setName("whitelist")
-    .setDescription("Remove a user from the blacklist in this server (owner only).")
-    .addUserOption((opt) => opt.setName("user").setDescription("User to whitelist").setRequired(true)),
+    name: 'whitelist',
+    aliases: ['wl', 'unblacklist'],
+    description: 'Remove a user or guild from the blacklist. Owner only.',
+    usage: '<id>',
+    cooldown: 0,
+    ownerOnly: true,
+    noPrefix: false,
+    slash: new SlashCommandBuilder()
+        .setName('whitelist')
+        .setDescription('Remove a user or guild from the blacklist. Owner only.')
+        .addStringOption((opt) => opt.setName('id').setDescription('User or guild ID').setRequired(true)),
 
-  async execute(ctx) {
-    const { guild, reply, isSlash, args, message } = getContext(ctx);
+    async execute(ctx) {
+        const targetId = ctx.getOption('id', 0);
+        if (!targetId) return ctx.reply({ embeds: [embeds.error('Usage: `/whitelist <id>`')] });
 
-    const targetId = isSlash
-      ? ctx.interaction.options.getUser("user").id
-      : (message.mentions.users.first()?.id || args[0]);
+        const result = await Blacklist.findOneAndDelete({ targetId });
+        if (!result) {
+            return ctx.reply({ embeds: [embeds.error(`\`${targetId}\` is not currently blacklisted.`)] });
+        }
 
-    if (!targetId) {
-      return reply({ embeds: [errorEmbed("Please mention or provide a valid user.")] });
+        return ctx.reply({ embeds: [embeds.success(`Removed \`${targetId}\` from the blacklist.`)] });
     }
-
-    try {
-      await GuildModel.findOneAndUpdate(
-        { guildId: guild.id },
-        { $pull: { blacklistedUsers: targetId } },
-        { upsert: true }
-      );
-
-      return reply({ embeds: [successEmbed(`<@${targetId}> has been removed from the blacklist.`)] });
-    } catch (error) {
-      return reply({ embeds: [errorEmbed(`Failed to whitelist user: \`${error.message}\``)] });
-    }
-  },
 };

@@ -1,39 +1,35 @@
-const { SlashCommandBuilder, ChannelType } = require("discord.js");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const GuildModel = require("../../models/Guild");
+const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const GuildSettings = require('../../models/GuildSettings');
 
 module.exports = {
-  name: "setmusicchannel",
-  category: "owner",
-  description: "Set the dedicated music commands channel for this server (owner only).",
-  ownerOnly: true,
-  noPrefix: true,
-  data: new SlashCommandBuilder()
-    .setName("setmusicchannel")
-    .setDescription("Set the dedicated music commands channel for this server (owner only).")
-    .addChannelOption((opt) =>
-      opt
-        .setName("channel")
-        .setDescription("Text channel for music commands and the now-playing panel")
-        .addChannelTypes(ChannelType.GuildText)
-        .setRequired(true)
-    ),
+    name: 'setmusicchannel',
+    aliases: ['setmusicch'],
+    description: 'Lock the persistent music panel to a specific channel. Owner only.',
+    usage: '<#channel>',
+    cooldown: 0,
+    ownerOnly: true,
+    noPrefix: false,
+    slash: new SlashCommandBuilder()
+        .setName('setmusicchannel')
+        .setDescription('Lock the persistent music panel to a specific channel. Owner only.')
+        .addChannelOption((opt) =>
+            opt.setName('channel').setDescription('Target text channel').addChannelTypes(ChannelType.GuildText).setRequired(true)
+        ),
 
-  async execute(ctx) {
-    const { guild, reply, isSlash, message } = getContext(ctx);
+    async execute(ctx) {
+        const channel = ctx.isSlash ? ctx.interaction.options.getChannel('channel') : ctx.message.mentions.channels.first();
 
-    const channel = isSlash ? ctx.interaction.options.getChannel("channel") : message.mentions.channels.first();
+        if (!channel) {
+            return ctx.reply({ embeds: [embeds.error('Please mention or select a valid text channel.')] });
+        }
 
-    if (!channel) {
-      return reply({ embeds: [errorEmbed("Please mention or select a valid text channel.")] });
+        await GuildSettings.findOneAndUpdate(
+            { guildId: ctx.guild.id },
+            { $set: { musicChannelId: channel.id } },
+            { upsert: true }
+        );
+
+        return ctx.reply({ embeds: [embeds.success(`Music panel channel set to ${channel}.`)] });
     }
-
-    try {
-      await GuildModel.findOneAndUpdate({ guildId: guild.id }, { musicChannelId: channel.id }, { upsert: true });
-      return reply({ embeds: [successEmbed(`Music channel set to <#${channel.id}>.`)] });
-    } catch (error) {
-      return reply({ embeds: [errorEmbed(`Failed to set music channel: \`${error.message}\``)] });
-    }
-  },
 };

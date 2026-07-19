@@ -1,46 +1,45 @@
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const config = require("../../config/config");
-const util = require("util");
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const util = require('util');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const logger = require('../../utils/logger');
 
-/**
- * !eval — owner-only. Executes arbitrary JS in the bot's process for live
- * debugging. Gated by ownerOnly:true AND a hardcoded owner check inside
- * execute() as defense-in-depth (never rely on a single gate for something
- * this powerful).
- */
 module.exports = {
-  name: "eval",
-  category: "owner",
-  description: "Execute JavaScript code (owner only).",
-  ownerOnly: true,
-  noPrefix: true,
+    name: 'eval',
+    aliases: ['ev'],
+    description: 'Execute arbitrary JavaScript. Owner only.',
+    usage: '<code>',
+    cooldown: 0,
+    ownerOnly: true,
+    noPrefix: false, // deliberately prefix/slash only — too dangerous for bare-word no-prefix triggering
+    slash: new SlashCommandBuilder()
+        .setName('eval')
+        .setDescription('Execute arbitrary JavaScript. Owner only.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption((opt) => opt.setName('code').setDescription('JavaScript to evaluate').setRequired(true)),
 
-  async execute(ctx) {
-    const { reply, author } = getContext(ctx);
+    async execute(ctx) {
+        const code = ctx.getOption('code', 0) || ctx.args.join(' ');
+        if (!code) return ctx.reply({ embeds: [embeds.error('Provide code to evaluate.')] });
 
-    if (!config.owners.includes(author.id)) {
-      return reply({ embeds: [errorEmbed("This command is restricted to bot owners.")] });
+        const client = ctx.client;
+        const guild = ctx.guild;
+        const message = ctx.message;
+        const player = client.player;
+
+        try {
+            let output = eval(code); // eslint-disable-line no-eval
+            if (output instanceof Promise) output = await output;
+
+            const formatted = typeof output === 'string' ? output : util.inspect(output, { depth: 1 });
+            const clean = formatted.replace(new RegExp(config.token, 'gi'), '[REDACTED]');
+            const truncated = clean.length > 1900 ? `${clean.slice(0, 1900)}...` : clean;
+
+            return ctx.reply({ embeds: [embeds.success(`\`\`\`js\n${truncated || 'undefined'}\n\`\`\``, 'Eval Result')] });
+        } catch (err) {
+            logger.error('EvalCommand', 'Evaluation threw an error.', err);
+            const errText = String(err?.message || err).slice(0, 1900);
+            return ctx.reply({ embeds: [embeds.error(`\`\`\`js\n${errText}\n\`\`\``, 'Eval Error')] });
+        }
     }
-
-    const code = ctx.isSlash ? null : ctx.args.join(" ");
-    if (!code) {
-      return reply({ embeds: [errorEmbed("Provide code to evaluate, e.g. `!eval 1 + 1`.")] });
-    }
-
-    try {
-      // eslint-disable-next-line no-eval
-      let output = eval(code);
-      if (output instanceof Promise) output = await output;
-
-      const inspected = typeof output === "string" ? output : util.inspect(output, { depth: 1 });
-      const clean = inspected.replace(new RegExp(config.token, "g"), "[REDACTED]");
-
-      return reply({
-        embeds: [successEmbed(`\`\`\`js\n${clean.slice(0, 3900)}\n\`\`\``, "Eval Output")],
-      });
-    } catch (error) {
-      return reply({ embeds: [errorEmbed(`\`\`\`js\n${String(error).slice(0, 3900)}\n\`\`\``, "Eval Error")] });
-    }
-  },
 };

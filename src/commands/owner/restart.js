@@ -1,22 +1,22 @@
-const { successEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const logger = require("../../utils/logger");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const logger = require('../../utils/logger');
 
 module.exports = {
-  name: "restart",
-  category: "owner",
-  description: "Restart the bot process (owner only).",
-  ownerOnly: true,
-  noPrefix: true,
+    name: 'restart',
+    aliases: [],
+    description: 'Restart the bot process. Owner only.',
+    cooldown: 0,
+    ownerOnly: true,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('restart').setDescription('Restart the bot process. Owner only.'),
 
-  async execute(ctx) {
-    const { reply } = getContext(ctx);
+    async execute(ctx) {
+        await ctx.reply({ embeds: [embeds.warning('Restarting Nocturne...')] });
+        logger.warn('RestartCommand', `Restart triggered by ${ctx.user.tag}.`);
 
-    await reply({ embeds: [successEmbed("Restarting Nocturne... I'll be back online shortly.")] });
-    logger.warn("Restart triggered by owner command. Exiting process.");
-
-    // Railway (and any process manager with restart-on-exit) will spin the
-    // bot back up automatically after this clean exit.
-    setTimeout(() => process.exit(0), 1000);
-  },
+        // Exit with a non-zero code so Railway's "ON_FAILURE" restart policy
+        // (configured in railway.json) automatically brings the process back up.
+        setTimeout(() => process.exit(1), 500);
+    }
 };

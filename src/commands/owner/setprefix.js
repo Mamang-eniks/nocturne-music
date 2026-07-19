@@ -1,33 +1,29 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const GuildModel = require("../../models/Guild");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const GuildSettings = require('../../models/GuildSettings');
 
 module.exports = {
-  name: "setprefix",
-  category: "owner",
-  description: "Change the command prefix for this server (owner only).",
-  ownerOnly: true,
-  noPrefix: true,
-  data: new SlashCommandBuilder()
-    .setName("setprefix")
-    .setDescription("Change the command prefix for this server (owner only).")
-    .addStringOption((opt) => opt.setName("prefix").setDescription("New prefix, max 5 characters").setRequired(true)),
+    name: 'setprefix',
+    aliases: [],
+    description: 'Change the prefix command trigger for this server. Owner only.',
+    usage: '<new prefix>',
+    cooldown: 0,
+    ownerOnly: true,
+    noPrefix: false,
+    slash: new SlashCommandBuilder()
+        .setName('setprefix')
+        .setDescription('Change the prefix command trigger for this server. Owner only.')
+        .addStringOption((opt) => opt.setName('prefix').setDescription('New prefix (max 5 characters)').setRequired(true)),
 
-  async execute(ctx) {
-    const { guild, reply, isSlash, args } = getContext(ctx);
+    async execute(ctx) {
+        const prefix = ctx.getOption('prefix', 0);
 
-    const newPrefix = isSlash ? ctx.interaction.options.getString("prefix") : args[0];
+        if (!prefix || prefix.length > 5) {
+            return ctx.reply({ embeds: [embeds.error('Please provide a prefix of 5 characters or fewer.')] });
+        }
 
-    if (!newPrefix || newPrefix.length > 5) {
-      return reply({ embeds: [errorEmbed("Prefix must be 1-5 characters long.")] });
+        await GuildSettings.findOneAndUpdate({ guildId: ctx.guild.id }, { $set: { prefix } }, { upsert: true });
+
+        return ctx.reply({ embeds: [embeds.success(`Prefix updated to \`${prefix}\` for this server.`)] });
     }
-
-    try {
-      await GuildModel.findOneAndUpdate({ guildId: guild.id }, { prefix: newPrefix }, { upsert: true });
-      return reply({ embeds: [successEmbed(`Prefix updated to \`${newPrefix}\` for this server.`)] });
-    } catch (error) {
-      return reply({ embeds: [errorEmbed(`Failed to update prefix: \`${error.message}\``)] });
-    }
-  },
 };
