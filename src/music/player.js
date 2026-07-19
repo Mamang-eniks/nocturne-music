@@ -14,19 +14,25 @@ async function initializePlayer(client) {
       quality: "highestaudio",
       highWaterMark: 1 << 25,
     },
-    // ffmpeg-static provides a portable ffmpeg binary — no system install required.
-    // discord-player resolves ffmpeg automatically once ffmpeg-static is installed,
-    // but we set it explicitly here for reliability on Railway's Nixpacks builder.
     skipFFmpeg: false,
   });
 
   process.env.FFMPEG_PATH = process.env.FFMPEG_PATH || require("ffmpeg-static");
 
   // Load YouTube / Spotify / SoundCloud / Apple Music extractors bundled with
-  // @discord-player/extractor. This gives Nocturne multi-source support out
-  // of the box (YouTube search + playback, Spotify link resolution → YouTube
-  // source, SoundCloud, and more).
-  await player.extractors.loadMulti(DefaultExtractors);
+  // @discord-player/extractor. Different discord-player releases have exposed
+  // slightly different loader APIs (loadMulti / loadDefault / register). We
+  // try them in order of preference and fall back gracefully so a minor
+  // dependency bump never takes the whole bot down.
+  if (typeof player.extractors.loadMulti === "function") {
+    await player.extractors.loadMulti(DefaultExtractors);
+  } else if (typeof player.extractors.loadDefault === "function") {
+    await player.extractors.loadDefault();
+  } else {
+    for (const extractor of DefaultExtractors) {
+      await player.extractors.register(extractor, {});
+    }
+  }
 
   logger.success(`discord-player initialized with ${player.extractors.store.size} extractor(s) loaded.`);
 
