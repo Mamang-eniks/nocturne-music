@@ -56,8 +56,19 @@ async function initPlayer(client) {
         // cipher data at all — surfacing as "No valid URL to decipher" even after
         // the await fix above. format: "any" removes the container restriction so
         // chooseFormat() can pick from every available audio format.
+        // Client selection history (see inline comments below for why this matters):
+        //   IOS (library default): expects a ready-to-use format.url with no
+        //     decipher step, but often gets format entries with no url at all.
+        //   WEB: always deciphers, but requires a genuinely valid PoToken to get
+        //     ANY streaming_data back at all — generateWithPoToken relies on
+        //     bgutils-js solving a BotGuard challenge via jsdom, which isn't
+        //     reliable in a headless server environment like Railway, so WEB
+        //     requests were coming back with no streaming_data whatsoever.
+        //   TV_EMBEDDED: doesn't require deciphering OR a PoToken, and is the
+        //     client currently most consistently able to return full streaming
+        //     data + direct format URLs for youtubei.js-based extractors.
         const instance = await player.extractors.register(YoutubeiExtractor, {
-            streamOptions: { useClient: 'WEB' },
+            streamOptions: { useClient: 'TV_EMBEDDED' },
             generateWithPoToken: true,
             overrideDownloadOptions: { type: 'audio', quality: 'best', format: 'any' }
         });
