@@ -1,52 +1,76 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
-const { baseEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const { emoji } = require("../../utils/emojis");
-const config = require("../../config/config");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
 
-const CATEGORY_META = {
-  music: { label: "Music", emoji: emoji("music") },
-  utility: { label: "Utility", emoji: "🛠️" },
-  owner: { label: "Owner", emoji: emoji("crown") },
-  system: { label: "System", emoji: "⚙️" },
+const CATEGORY_LABELS = {
+    music: '🎵 Music',
+    utility: '🛠️ Utility',
+    owner: '👑 Owner',
+    system: '⚙️ System'
 };
 
-function buildOverviewEmbed(client) {
-  const categories = {};
-  for (const command of client.commands.values()) {
-    if (command.ownerOnly) continue; // hide owner commands from public help
-    if (!categories[command.category]) categories[command.category] = [];
-    categories[command.category].push(command.name);
-  }
-
-  const embed = baseEmbed()
-    .setTitle(`${emoji("music")} ${config.name} — Command Help`)
-    .setDescription(
-      `Prefix: \`${config.prefix}\` • Slash commands are fully supported.\nUse the menu below to browse by category.`
-    );
-
-  for (const [category, names] of Object.entries(categories)) {
-    const meta = CATEGORY_META[category] || { label: category, emoji: "•" };
-    embed.addFields({
-      name: `${meta.emoji} ${meta.label}`,
-      value: names.map((n) => `\`${n}\``).join(", "),
-    });
-  }
-
-  return embed;
-}
-
 module.exports = {
-  name: "help",
-  aliases: ["h", "commands"],
-  category: "utility",
-  description: "View all available commands.",
-  data: new SlashCommandBuilder().setName("help").setDescription("View all available commands."),
+    name: 'help',
+    aliases: ['h', 'commands'],
+    description: 'List every available command, or view details for one.',
+    usage: '[command]',
+    cooldown: config.cooldowns.default,
+    noPrefix: true,
+    slash: new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('List every available command, or view details for one.')
+        .addStringOption((opt) => opt.setName('command').setDescription('A specific command to view')),
 
-  async execute(ctx) {
-    const { reply } = getContext(ctx);
-    const client = ctx.client;
+    async execute(ctx) {
+        const target = ctx.getOption('command', 0);
+        const client = ctx.client;
 
-    return reply({ embeds: [buildOverviewEmbed(client)] });
-  },
+        if (target) {
+            const command = client.commands.get(target.toLowerCase()) || client.commands.get(client.aliases.get(target.toLowerCase()));
+            if (!command) {
+                return ctx.reply({ embeds: [embeds.error(`No command named **${target}** was found.`)] });
+            }
+
+            const embed = embeds
+                .info('', `Command: /${command.name}`)
+                .addFields(
+                    { name: 'Description', value: command.description || 'No description provided.' },
+                    { name: 'Category', value: command.category, inline: true },
+                    { name: 'Aliases', value: command.aliases?.length ? command.aliases.join(', ') : 'None', inline: true },
+                    { name: 'Usage', value: `\`${config.prefix}${command.name} ${command.usage || ''}\``.trim() }
+                );
+            return ctx.reply({ embeds: [embed] });
+        }
+
+        const categories = {};
+        for (const command of client.commands.values()) {
+            if (!categories[command.category]) categories[command.category] = [];
+            categories[command.category].push(command.name);
+        }
+
+        const embed = embeds.info('', `${config.emojis.music} Nocturne — Command List`).setDescription(
+            'Use `/help <command>` for details on a specific command.\n\u200b'
+        );
+
+        for (const [category, names] of Object.entries(categories)) {
+            embed.addFields({
+                name: CATEGORY_LABELS[category] || category,
+                value: names.map((n) => `\`${n}\``).join(' ')
+            });
+        }
+
+        const row = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('help_category_select')
+                .setPlaceholder('Browse by category')
+                .addOptions(
+                    Object.keys(categories).map((cat) => ({
+                        label: CATEGORY_LABELS[cat] || cat,
+                        value: cat
+                    }))
+                )
+        );
+
+        return ctx.reply({ embeds: [embed], components: [row] });
+    }
 };

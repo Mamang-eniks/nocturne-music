@@ -1,29 +1,29 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { infoEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
 
 module.exports = {
-  name: "ping",
-  category: "utility",
-  description: "Check the bot's latency.",
-  data: new SlashCommandBuilder().setName("ping").setDescription("Check the bot's latency."),
+    name: 'ping',
+    aliases: ['latency'],
+    description: 'Check the bot\'s latency and API response time.',
+    cooldown: config.cooldowns.default,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('ping').setDescription('Check the bot\'s latency and API response time.'),
 
-  async execute(ctx) {
-    const { reply } = getContext(ctx);
-    const client = ctx.client;
+    async execute(ctx) {
+        const start = Date.now();
+        const sent = await ctx.reply({ embeds: [embeds.info('Pinging...')] });
+        const roundTrip = Date.now() - start;
+        const wsLatency = Math.round(ctx.client.ws.ping);
 
-    const sent = await reply({ embeds: [infoEmbed("Pinging...")], fetchReply: true });
-    const roundTrip = sent.createdTimestamp - (ctx.isSlash ? ctx.interaction.createdTimestamp : ctx.message.createdTimestamp);
+        const embed = embeds.success(
+            [`**Round trip:** ${roundTrip}ms`, `**WebSocket:** ${wsLatency}ms`].join('\n'),
+            '🏓 Pong!'
+        );
 
-    const embed = infoEmbed(
-      [`**Round trip:** ${roundTrip}ms`, `**WebSocket:** ${client.ws.ping}ms`].join("\n"),
-      "🏓 Pong!"
-    );
-
-    if (ctx.isSlash) {
-      await ctx.interaction.editReply({ embeds: [embed] });
-    } else {
-      await sent.edit({ embeds: [embed] });
+        if (ctx.isSlash) {
+            return ctx.interaction.editReply({ embeds: [embed] });
+        }
+        return sent.edit({ embeds: [embed] });
     }
-  },
 };
