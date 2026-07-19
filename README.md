@@ -1,138 +1,140 @@
-# 🎧 Nocturne — Premium Discord Music Bot
+# Nocturne — Premium Discord Music Bot
 
-Nocturne is a production-ready, dark-purple-themed Discord music bot built on
-**discord.js v14** and **discord-player**. It supports YouTube, Spotify, and
-SoundCloud playback, a persistent interactive "Now Playing" panel with custom
-emoji buttons, slash + prefix + owner-only no-prefix commands, MongoDB-backed
-guild/user settings, and an anti-crash system built for 24/7 uptime on Railway.
+Nocturne is a production-ready Discord music bot built with **discord.js v14** and **discord-player v6**. It supports slash commands, prefix commands, and owner-only no-prefix commands, backed by MongoDB for persistence, and ships with a permanent, interactive "Now Playing" control panel styled in a dark purple / premium theme.
 
 ---
 
 ## ✨ Features
 
-- Slash commands, prefix commands, and owner-only no-prefix commands
-- YouTube, Spotify, and SoundCloud playback via `discord-player` extractors
-- Playlist support, autoplay, vote-skip, song history, persistent queue data
-- Permanent "Now Playing" panel: progress bar, thumbnail, queue count, volume,
-  requester, voice channel — all with custom server emoji buttons
-- Auto-reconnect, auto-resume metadata, auto-disconnect on empty VC
-- MongoDB persistence: guild settings, blacklist, prefixes, playlists, history
-- Owner tools: `eval`, `reload`, `restart`, `maintenance`, `blacklist`,
-  `whitelist`, `setprefix`, `setmusicchannel`
-- Global anti-crash handlers, per-command cooldowns, permission checks
-- Clean modular architecture — easy to extend with new commands or events
+- **Slash + Prefix + No-Prefix** command system (no-prefix is owner-only)
+- YouTube, Spotify, and SoundCloud playback via `discord-player`
+- Persistent, auto-updating "Now Playing" panel with buttons (previous, pause/resume, skip, stop, shuffle, loop, queue, volume ±)
+- Queue management: `/queue`, `/remove`, `/clear`, `/shuffle`, `/seek`
+- Loop modes: off / track / queue / autoplay
+- Personal playlists: `/playlist save|load|list|delete`
+- Vote-skip system for non-requesters
+- Auto-reconnect, auto-resume, and auto-disconnect on an empty voice channel
+- MongoDB-backed guild settings, music history, premium users, and blacklist
+- Owner tools: `eval`, `reload`, `restart`, `maintenance`, `blacklist`, `whitelist`, `setprefix`, `setmusicchannel`
+- Anti-crash guards, anti-spam rate limiting, and per-command cooldowns
+- Fully custom emoji system — swap every icon from one config file
 
 ---
 
 ## 📁 Project Structure
 
 ```
-nocturne/
-├── src/
-│   ├── index.js                # Entrypoint — bootstraps everything
-│   ├── deploy-commands.js      # Slash command registration script
-│   ├── config/config.js        # All tunables: tokens, colors, emojis
-│   ├── database/connect.js     # MongoDB connection w/ retry
-│   ├── models/                 # Guild, User, Playlist, History schemas
-│   ├── handlers/                # Command / event / button loaders
-│   ├── utils/                   # Logger, embeds, emojis, format, panel, etc.
-│   ├── music/player.js          # discord-player initialization
-│   ├── events/client/           # ready, interactionCreate, messageCreate, voiceStateUpdate
-│   ├── events/player/           # playerStart, playerEnd, playerError, emptyChannel, disconnect
-│   ├── buttons/musicButtons.js  # Panel button interaction logic
-│   └── commands/
-│       ├── music/               # play, pause, resume, skip, queue, etc.
-│       ├── utility/              # help, ping, invite
-│       └── owner/                # eval, reload, restart, blacklist, etc.
-├── package.json
-├── railway.json
-├── .env.example
-└── .gitignore
+src/
+├── commands/
+│   ├── music/       → play, pause, resume, skip, previous, stop, queue,
+│   │                  nowplaying, loop, shuffle, volume, remove, clear,
+│   │                  seek, autoplay, lyrics
+│   ├── utility/      → help, ping, playlist, invite
+│   ├── owner/        → eval, reload, restart, maintenance, blacklist,
+│   │                  whitelist, setprefix, setmusicchannel
+│   └── system/       → stats
+├── events/           → clientReady, interactionCreate, messageCreate, voiceStateUpdate
+├── handlers/         → commandHandler, eventHandler, buttonHandler
+├── models/           → GuildSettings, UserPlaylist, MusicHistory, PremiumUser, Blacklist
+├── utils/            → logger, embeds, permissions, cooldownManager, antiSpam,
+│                        format, context, musicHelpers, panelGuard
+├── music/            → player.js (discord-player bootstrap), panelManager.js,
+│                        voteSkip.js
+├── buttons/          → one file per music-panel button
+├── config/           → config.js
+├── database/         → connect.js
+├── index.js          → entry point
+└── deploy-commands.js → optional standalone slash command deploy script
 ```
 
 ---
 
-## 🚀 Local Setup
+## 🚀 Setup
 
-1. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### 1. Prerequisites
 
-2. **Configure environment**
-   ```bash
-   cp .env.example .env
-   ```
-   Fill in `TOKEN`, `CLIENT_ID`, `GUILD_ID` (optional, for instant dev command
-   sync), `MONGO_URI`, `OWNER_ID`, and optionally `GENIUS_API_KEY` for lyrics.
+- Node.js **18.17+**
+- A MongoDB database (MongoDB Atlas free tier works fine)
+- A Discord application + bot token from the [Discord Developer Portal](https://discord.com/developers/applications)
 
-3. **Set up your custom emojis**
-   Upload the button icons (play, pause, skip, etc.) to a Discord server the
-   bot is in, then copy each emoji's ID into `src/config/config.js` under the
-   `emojis` object. Animated emojis use the `<a:name:id>` format.
+### 2. Discord application setup
 
-4. **Deploy slash commands**
-   ```bash
-   npm run deploy
-   ```
+1. Create an application → add a **Bot** user.
+2. Under **Bot**, enable the **Message Content Intent** (required for prefix/no-prefix commands).
+3. Under **OAuth2 → URL Generator**, select the `bot` and `applications.commands` scopes with `Send Messages`, `Embed Links`, `Connect`, `Speak`, and `Use External Emojis` permissions, then use the generated URL to invite the bot to your server.
 
-5. **Start the bot**
-   ```bash
-   npm start
-   ```
+### 3. Install dependencies
+
+```bash
+npm install
+```
+
+> **Optional (recommended):** install `discord-player-youtubei` for the most reliable YouTube playback:
+> `npm install discord-player-youtubei`
+> Nocturne detects it automatically at startup and falls back to the bundled default extractor if it isn't installed.
+
+### 4. Configure environment variables
+
+Copy `.env.example` to `.env` and fill in the values:
+
+```env
+TOKEN=your-bot-token
+CLIENT_ID=your-application-id
+GUILD_ID=your-test-guild-id      # optional — instant command sync while developing
+MONGO_URI=your-mongodb-uri
+PREFIX=!
+OWNER_ID=123456789012345678,987654321098765432
+MUSIC_CHANNEL_ID=                # optional — locks music commands to one channel
+NODE_ENV=production
+```
+
+Leave `GUILD_ID` empty in production so slash commands register **globally** instead of to a single test server.
+
+### 5. Configure emojis
+
+Open `src/config/config.js` and replace every placeholder emoji ID under `emojis` with your own server's custom emoji IDs (right-click an emoji in Discord → Copy ID, or type `\:emojiname:` in a message to reveal its full tag).
+
+### 6. Run locally
+
+```bash
+npm start
+# or, with auto-restart on file changes:
+npm run dev
+```
+
+Slash commands are registered automatically on every startup — no separate deploy step needed. If you'd like to deploy them without starting the bot, run `npm run deploy`.
 
 ---
 
 ## ☁️ Deploying to Railway
 
-1. Push this repository to GitHub.
-2. In Railway, create a new project → **Deploy from GitHub repo**.
-3. Under **Variables**, add every key from `.env.example`:
-   ```
-   TOKEN=
-   CLIENT_ID=
-   GUILD_ID=
-   MONGO_URI=
-   PREFIX=
-   OWNER_ID=
-   MUSIC_CHANNEL_ID=
-   GENIUS_API_KEY=
-   NODE_ENV=production
-   ```
-4. Railway will detect `railway.json` and use Nixpacks to build automatically.
-   The start command is `node src/index.js`.
-5. After the first deploy, run `npm run deploy` locally (pointed at the same
-   `CLIENT_ID`) once to register your slash commands, or trigger it as a
-   one-off Railway command.
-6. Every push to your connected branch will auto-redeploy.
+1. Push this project to a GitHub repository.
+2. In Railway, create a **New Project → Deploy from GitHub repo** and select it.
+3. Add all the variables from `.env.example` under **Variables** (`TOKEN`, `CLIENT_ID`, `GUILD_ID`, `MONGO_URI`, `PREFIX`, `OWNER_ID`, `MUSIC_CHANNEL_ID`, `NODE_ENV`).
+4. Railway will detect `nixpacks.toml` and `railway.json` automatically and run `node src/index.js` as the start command.
+5. Every push to your connected branch triggers an automatic redeploy.
 
-**MongoDB:** use a free [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
-— whitelist `0.0.0.0/0` (or Railway's egress IPs) so Railway can connect.
+The included `nixpacks.toml` ensures the native build tools needed by `@discordjs/opus`/`libsodium-wrappers` are present on Railway's build image, and `ffmpeg-static` bundles its own FFmpeg binary so no extra system package is required.
 
 ---
 
-## 🔧 Extending Nocturne
+## 🔐 Owner & No-Prefix Commands
 
-- **New music command:** drop a file in `src/commands/music/`, export
-  `{ name, category, description, data, execute }`. It's auto-loaded on boot.
-- **New event:** add a file to `src/events/client/` or `src/events/player/`.
-- **New button:** add a module to `src/buttons/` exporting `{ customIds, execute }`.
-- **Change theme colors/emojis:** everything lives in `src/config/config.js` —
-  no need to touch command logic.
+Only user IDs listed in `OWNER_ID` (comma-separated) can:
+
+- Use `eval`, `reload`, `restart`, `maintenance`, `blacklist`, `whitelist`, `setprefix`, and `setmusicchannel` (prefix/slash only for the more sensitive ones — `eval`, `blacklist`, `whitelist`, and `setprefix`/`setmusicchannel` are intentionally **not** no-prefix-enabled to avoid accidental triggers in casual chat).
+- Trigger **no-prefix** commands: any command flagged `noPrefix: true` (e.g. `play`, `stop`, `skip`, `pause`, `resume`, `reload`, `restart`, `help`, `ping`, and more) can be typed as a bare word with no prefix at all, but **only** by a configured owner. Everyone else must use the slash command or the configured prefix.
 
 ---
 
-## 🛡️ Security Notes
+## 🛠️ Extending Nocturne
 
-- No-prefix commands only fire for user IDs listed in `OWNER_ID`, and only for
-  commands explicitly flagged `noPrefix: true` — this prevents accidental
-  triggers on normal messages.
-- `!eval` redacts the bot token from output automatically, but it still grants
-  full code execution — keep your `OWNER_ID` list restricted to yourself.
-- Blacklisted users are checked on both slash and prefix command paths.
+- **Add a command:** drop a new file in the matching `src/commands/<category>/` folder following the existing shape (`name`, `description`, `slash`, `execute(ctx)`); it's picked up automatically on the next boot or `!reload`.
+- **Add an event:** drop a file in `src/events/` exporting `{ name, once?, execute(...args, client) }`.
+- **Add a panel button:** drop a file in `src/buttons/` exporting `{ customId, execute(interaction, client) }`, then wire the button into `buildPanelButtons()` in `src/music/panelManager.js`.
 
 ---
 
-## 📜 License
+## 📄 License
 
-MIT — build on top of Nocturne freely.
+MIT — do whatever you'd like with it.

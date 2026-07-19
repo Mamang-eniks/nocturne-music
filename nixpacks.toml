@@ -1,0 +1,10 @@
+# Ensures native build tools are present on Railway so that
+# @discordjs/opus and libsodium-wrappers compile correctly.
+[phases.setup]
+nixPkgs = ["...", "python3", "gcc", "gnumake"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev || npm install --omit=dev"]
+
+[start]
+cmd = "node src/index.js"
