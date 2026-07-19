@@ -1,38 +1,49 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { successEmbed, errorEmbed, infoEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { requireActiveQueue, validateVoiceState } = require('../../utils/musicHelpers');
+const GuildSettings = require('../../models/GuildSettings');
 
 module.exports = {
-  name: "volume",
-  aliases: ["vol"],
-  category: "music",
-  description: "View or set the playback volume (0-100).",
-  data: new SlashCommandBuilder()
-    .setName("volume")
-    .setDescription("View or set the playback volume (0-100).")
-    .addIntegerOption((opt) =>
-      opt.setName("level").setDescription("Volume level 0-100").setMinValue(0).setMaxValue(100).setRequired(false)
-    ),
+    name: 'volume',
+    aliases: ['vol'],
+    description: 'View or set the playback volume.',
+    usage: '[0-150]',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder()
+        .setName('volume')
+        .setDescription('View or set the playback volume.')
+        .addIntegerOption((opt) =>
+            opt.setName('level').setDescription('Volume level (0-150)').setMinValue(0).setMaxValue(config.maxVolume)
+        ),
 
-  async execute(ctx) {
-    const { guild, reply, isSlash, args } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) return ctx.reply({ embeds: [check.embed] });
 
-    if (!queue) return reply({ embeds: [errorEmbed("There's nothing playing right now.")] });
+        const queue = await requireActiveQueue(ctx, player);
+        if (!queue) return;
 
-    const level = isSlash ? ctx.interaction.options.getInteger("level") : parseInt(args[0], 10);
+        const level = ctx.getIntegerOption('level', 0);
 
-    if (level === null || level === undefined || Number.isNaN(level)) {
-      return reply({ embeds: [infoEmbed(`Current volume: **${queue.node.volume}%**`)] });
+        if (level === undefined) {
+            return ctx.reply({ embeds: [embeds.info(`Current volume is **${queue.node.volume}%**.`)] });
+        }
+
+        if (level < 0 || level > config.maxVolume) {
+            return ctx.reply({ embeds: [embeds.error(`Volume must be between 0 and ${config.maxVolume}.`)] });
+        }
+
+        queue.node.setVolume(level);
+
+        try {
+            await GuildSettings.findOneAndUpdate({ guildId: ctx.guild.id }, { $set: { volume: level } }, { upsert: true });
+        } catch {
+            // Non-fatal — volume still applies for this session even if persistence fails.
+        }
+
+        return ctx.reply({ embeds: [embeds.success(`${config.emojis.volume} Volume set to **${level}%**.`)] });
     }
-
-    if (level < 0 || level > 100) {
-      return reply({ embeds: [errorEmbed("Volume must be between 0 and 100.")] });
-    }
-
-    queue.node.setVolume(level);
-    return reply({ embeds: [successEmbed(`Volume set to **${level}%**.`)] });
-  },
 };

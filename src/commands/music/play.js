@@ -1,105 +1,91 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer, QueryType } = require("discord-player");
-const { successEmbed, errorEmbed, infoEmbed } = require("../../utils/embeds");
-const { validateVoiceState } = require("../../utils/permissions");
-const { emoji } = require("../../utils/emojis");
-const config = require("../../config/config");
+/**
+ * /play — searches and queues a track or playlist from YouTube, Spotify,
+ * or SoundCloud, joining the invoker's voice channel if necessary.
+ */
+
+const { SlashCommandBuilder } = require('discord.js');
+const { QueryType } = require('discord-player');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { validateVoiceState } = require('../../utils/musicHelpers');
+const { defaultQueueOptions } = require('../../music/player');
+const logger = require('../../utils/logger');
 
 module.exports = {
-  name: "play",
-  aliases: ["p"],
-  category: "music",
-  description: "Play a song or playlist from YouTube, Spotify, or SoundCloud.",
-  cooldown: config.cooldowns.play,
-  noPrefix: true,
+    name: 'play',
+    aliases: ['p'],
+    description: 'Play a song or playlist from YouTube, Spotify, or SoundCloud.',
+    usage: '<song name or URL>',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder()
+        .setName('play')
+        .setDescription('Play a song or playlist from YouTube, Spotify, or SoundCloud.')
+        .addStringOption((opt) =>
+            opt.setName('query').setDescription('Song name, YouTube/Spotify/SoundCloud URL, or playlist link').setRequired(true).setAutocomplete(true)
+        ),
 
-  data: new SlashCommandBuilder()
-    .setName("play")
-    .setDescription("Play a song or playlist from YouTube, Spotify, or SoundCloud.")
-    .addStringOption((opt) =>
-      opt.setName("query").setDescription("Song name or URL").setRequired(true).setAutocomplete(true)
-    ),
+    async execute(ctx) {
+        const query = ctx.getText().trim();
 
-  async autocomplete(interaction, client) {
-    const focused = interaction.options.getFocused();
-    if (!focused) return interaction.respond([]);
+        if (!query) {
+            return ctx.reply({ embeds: [embeds.error('Please provide a song name or a URL to play.')] });
+        }
 
-    const player = useMainPlayer();
-    const results = await player.search(focused, { requestedBy: interaction.user }).catch(() => null);
-    if (!results?.tracks?.length) return interaction.respond([]);
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) {
+            return ctx.reply({ embeds: [check.embed] });
+        }
 
-    await interaction.respond(
-      results.tracks.slice(0, 10).map((t) => ({
-        name: `${t.title} — ${t.author}`.slice(0, 100),
-        value: t.url.slice(0, 100),
-      }))
-    );
-  },
+        await ctx.deferReply();
 
-  async execute({ client, interaction, message, isSlash, args }) {
-    const member = isSlash ? interaction.member : message.member;
-    const guild = isSlash ? interaction.guild : message.guild;
-    const channel = isSlash ? interaction.channel : message.channel;
-    const author = isSlash ? interaction.user : message.author;
-    const query = isSlash ? interaction.options.getString("query") : args.join(" ");
+        try {
+            const searchResult = await player.search(query, {
+                requestedBy: ctx.user,
+                searchEngine: QueryType.AUTO
+            });
 
-    const reply = async (payload) => {
-      if (isSlash) {
-        return interaction.deferred || interaction.replied
-          ? interaction.followUp(payload)
-          : interaction.reply(payload);
-      }
-      return message.reply(payload);
-    };
+            if (!searchResult || !searchResult.tracks.length) {
+                return ctx.reply({ embeds: [embeds.error(`No results found for **${query}**.`)] });
+            }
 
-    if (!query) {
-      return reply({ embeds: [errorEmbed("Please provide a song name or URL.")] });
+            const { track } = await player.play(check.voiceChannel, searchResult, {
+                nodeOptions: defaultQueueOptions(ctx.channel)
+            });
+
+            const isPlaylist = searchResult.playlist && searchResult.tracks.length > 1;
+
+            const embed = embeds.success(
+                isPlaylist
+                    ? `Queued **${searchResult.tracks.length} tracks** from playlist **${searchResult.playlist.title}**.`
+                    : `Queued **[${track.title}](${track.url})** — \`${track.duration}\``,
+                'Added to Queue'
+            );
+
+            return ctx.reply({ embeds: [embed] });
+        } catch (err) {
+            logger.error('PlayCommand', 'Failed to play track.', err);
+            return ctx.reply({ embeds: [embeds.error('Something went wrong while trying to play that track.')] });
+        }
+    },
+
+    async autocomplete(interaction) {
+        try {
+            const focused = interaction.options.getFocused();
+            if (!focused) return interaction.respond([]);
+
+            const player = interaction.client.player;
+            const results = await player.search(focused, { requestedBy: interaction.user });
+
+            const choices = results.tracks.slice(0, 10).map((t) => ({
+                name: `${t.title} — ${t.author}`.slice(0, 100),
+                value: t.url.slice(0, 100)
+            }));
+
+            await interaction.respond(choices);
+        } catch {
+            await interaction.respond([]);
+        }
     }
-
-    const player = useMainPlayer();
-    const voiceCheck = validateVoiceState(member, player);
-    if (!voiceCheck.ok) {
-      return reply({ embeds: [errorEmbed(voiceCheck.reason)] });
-    }
-
-    if (isSlash) await interaction.deferReply();
-
-    try {
-      const searchResult = await player.search(query, {
-        requestedBy: author,
-        searchEngine: QueryType.AUTO, // auto-detects YouTube, Spotify, SoundCloud links vs plain text search
-      });
-
-      if (!searchResult?.tracks?.length) {
-        return reply({ embeds: [errorEmbed(`No results found for **${query}**.`)] });
-      }
-
-      const { track } = await player.play(member.voice.channel, searchResult, {
-        nodeOptions: {
-          metadata: {
-            textChannel: channel,
-            panelMessage: null,
-          },
-          selfDeaf: true,
-          volume: config.music.defaultVolume,
-          leaveOnEmptyCooldown: config.music.leaveOnEmptyDelayMs,
-          leaveOnEndCooldown: config.music.leaveOnEndDelayMs,
-          leaveOnEmpty: true,
-          leaveOnEnd: true,
-          leaveOnStop: false,
-          maxSize: config.music.maxQueueSize,
-        },
-      });
-
-      const isPlaylist = searchResult.playlist != null;
-
-      const description = isPlaylist
-        ? `${emoji("success")} Queued **${searchResult.tracks.length}** tracks from playlist **${searchResult.playlist.title}**.`
-        : `${emoji("success")} Queued **${track.title}** by **${track.author}**.`;
-
-      return reply({ embeds: [successEmbed(description, "Added to Queue")] });
-    } catch (error) {
-      return reply({ embeds: [errorEmbed(`Failed to play track: \`${error.message}\``)] });
-    }
-  },
 };

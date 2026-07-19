@@ -1,26 +1,35 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { validateVoiceState } = require('../../utils/musicHelpers');
 
 module.exports = {
-  name: "previous",
-  aliases: ["back"],
-  category: "music",
-  description: "Play the previous track again.",
-  data: new SlashCommandBuilder().setName("previous").setDescription("Play the previous track again."),
+    name: 'previous',
+    aliases: ['back', 'prev'],
+    description: 'Play the previous track from history.',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('previous').setDescription('Play the previous track from history.'),
 
-  async execute(ctx) {
-    const { guild, reply } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) return ctx.reply({ embeds: [check.embed] });
 
-    if (!queue) return reply({ embeds: [errorEmbed("There's nothing playing right now.")] });
-    if (!queue.history.tracks.size) {
-      return reply({ embeds: [errorEmbed("There's no previous track in history.")] });
+        const queue = player.nodes.get(ctx.guild.id);
+        if (!queue) {
+            return ctx.reply({ embeds: [embeds.error('There is no active session to go back in.')] });
+        }
+
+        if (!queue.history.tracks.data.length) {
+            return ctx.reply({ embeds: [embeds.error('There is no previous track in history.')] });
+        }
+
+        try {
+            await queue.history.back();
+            return ctx.reply({ embeds: [embeds.success(`${config.emojis.previous} Playing the previous track.`)] });
+        } catch {
+            return ctx.reply({ embeds: [embeds.error('Could not go back to the previous track.')] });
+        }
     }
-
-    await queue.history.back();
-    return reply({ embeds: [successEmbed("Playing the previous track.")] });
-  },
 };

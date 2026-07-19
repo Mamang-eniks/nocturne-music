@@ -1,68 +1,55 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { successEmbed, errorEmbed, infoEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const { hasPermissions, isOwner } = require("../../utils/permissions");
-const config = require("../../config/config");
-
-// Tracks active vote-skip sessions: guildId -> Set<userId>
-const voteSkips = new Map();
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { requireActiveQueue, validateVoiceState } = require('../../utils/musicHelpers');
+const { isOwner, hasPermissions } = require('../../utils/permissions');
+const voteSkip = require('../../music/voteSkip');
+const { PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
-  name: "skip",
-  aliases: ["s"],
-  category: "music",
-  description: "Skip the current track (vote-based in group listening).",
-  noPrefix: true,
-  data: new SlashCommandBuilder().setName("skip").setDescription("Skip the current track."),
+    name: 'skip',
+    aliases: ['s', 'next'],
+    description: 'Skip the currently playing track.',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('skip').setDescription('Skip the currently playing track.'),
 
-  async execute(ctx) {
-    const { member, guild, reply, author } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) return ctx.reply({ embeds: [check.embed] });
 
-    if (!queue?.node.isPlaying()) {
-      return reply({ embeds: [errorEmbed("There's nothing playing right now.")] });
+        const queue = await requireActiveQueue(ctx, player);
+        if (!queue) return;
+
+        const track = queue.currentTrack;
+        const isRequester = track.requestedBy?.id === ctx.user.id;
+        const canForceSkip =
+            isRequester || isOwner(ctx.user.id) || hasPermissions(ctx.member, [PermissionFlagsBits.ManageGuild]);
+
+        if (!config.voteSkip.enabled || canForceSkip) {
+            queue.node.skip();
+            voteSkip.clear(ctx.guild.id);
+            return ctx.reply({ embeds: [embeds.success(`${config.emojis.skip} Skipped **${track.title}**.`)] });
+        }
+
+        const listenerCount = queue.channel.members.filter((m) => !m.user.bot).size;
+        const result = voteSkip.vote(ctx.guild.id, ctx.user.id, listenerCount);
+
+        if (result.alreadyVoted) {
+            return ctx.reply({ embeds: [embeds.warning('You already voted to skip this track.')] });
+        }
+
+        if (result.passed) {
+            queue.node.skip();
+            voteSkip.clear(ctx.guild.id);
+            return ctx.reply({
+                embeds: [embeds.success(`${config.emojis.skip} Vote passed (${result.votes}/${result.required}) — skipped **${track.title}**.`)]
+            });
+        }
+
+        return ctx.reply({
+            embeds: [embeds.info(`Vote to skip: **${result.votes}/${result.required}** votes needed.`, 'Skip Vote Registered')]
+        });
     }
-
-    const voiceChannel = queue.channel;
-    const listeners = voiceChannel.members.filter((m) => !m.user.bot);
-
-    // DJ / owner / manage-guild bypass — instant skip.
-    const canForceSkip = isOwner(author.id) || hasPermissions(member, ["ManageGuild"]) || listeners.size <= 2;
-
-    if (canForceSkip) {
-      const skipped = queue.currentTrack;
-      queue.node.skip();
-      voteSkips.delete(guild.id);
-      return reply({ embeds: [successEmbed(`Skipped **${skipped.title}**.`)] });
-    }
-
-    // ── Vote-skip flow ───────────────────────────────────────────────
-    if (!voteSkips.has(guild.id)) voteSkips.set(guild.id, new Set());
-    const votes = voteSkips.get(guild.id);
-
-    if (votes.has(author.id)) {
-      return reply({ embeds: [errorEmbed("You've already voted to skip this track.")] });
-    }
-
-    votes.add(author.id);
-    const required = Math.ceil(listeners.size * config.music.voteSkipThreshold);
-
-    if (votes.size >= required) {
-      const skipped = queue.currentTrack;
-      queue.node.skip();
-      voteSkips.delete(guild.id);
-      return reply({ embeds: [successEmbed(`Vote passed — skipped **${skipped.title}**.`)] });
-    }
-
-    return reply({
-      embeds: [
-        infoEmbed(
-          `${votes.size}/${required} votes needed to skip **${queue.currentTrack.title}**.`,
-          "Vote Skip"
-        ),
-      ],
-    });
-  },
 };

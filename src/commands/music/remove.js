@@ -1,36 +1,40 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { requireActiveQueue, validateVoiceState } = require('../../utils/musicHelpers');
+const { truncate } = require('../../utils/format');
 
 module.exports = {
-  name: "remove",
-  category: "music",
-  description: "Remove a specific track from the queue by position.",
-  data: new SlashCommandBuilder()
-    .setName("remove")
-    .setDescription("Remove a specific track from the queue by position.")
-    .addIntegerOption((opt) =>
-      opt.setName("position").setDescription("Queue position (starting at 1)").setRequired(true).setMinValue(1)
-    ),
+    name: 'remove',
+    aliases: ['rm'],
+    description: 'Remove a track from the queue by its position.',
+    usage: '<position>',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder()
+        .setName('remove')
+        .setDescription('Remove a track from the queue by its position.')
+        .addIntegerOption((opt) => opt.setName('position').setDescription('Track position in the queue').setRequired(true).setMinValue(1)),
 
-  async execute(ctx) {
-    const { guild, reply, isSlash, args } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) return ctx.reply({ embeds: [check.embed] });
 
-    if (!queue?.tracks.size) {
-      return reply({ embeds: [errorEmbed("The queue is empty.")] });
+        const queue = await requireActiveQueue(ctx, player);
+        if (!queue) return;
+
+        const position = ctx.getIntegerOption('position', 0);
+        const index = position - 1;
+        const tracks = queue.tracks.toArray();
+
+        if (!position || index < 0 || index >= tracks.length) {
+            return ctx.reply({ embeds: [embeds.error(`Please provide a valid position between 1 and ${tracks.length}.`)] });
+        }
+
+        const removed = tracks[index];
+        queue.removeTrack(removed);
+
+        return ctx.reply({ embeds: [embeds.success(`Removed **${truncate(removed.title, 60)}** from the queue.`)] });
     }
-
-    const position = isSlash ? ctx.interaction.options.getInteger("position") : parseInt(args[0], 10);
-    if (!position || position < 1 || position > queue.tracks.size) {
-      return reply({ embeds: [errorEmbed(`Please provide a valid position between 1 and ${queue.tracks.size}.`)] });
-    }
-
-    const track = queue.tracks.at(position - 1);
-    queue.node.remove(position - 1);
-
-    return reply({ embeds: [successEmbed(`Removed **${track.title}** from the queue.`)] });
-  },
 };

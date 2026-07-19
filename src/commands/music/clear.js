@@ -1,24 +1,27 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { requireActiveQueue, validateVoiceState } = require('../../utils/musicHelpers');
 
 module.exports = {
-  name: "clear",
-  category: "music",
-  description: "Clear all upcoming tracks from the queue (keeps the current track playing).",
-  data: new SlashCommandBuilder().setName("clear").setDescription("Clear all upcoming tracks from the queue."),
+    name: 'clear',
+    aliases: ['cq'],
+    description: 'Clear every upcoming track from the queue.',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('clear').setDescription('Clear every upcoming track from the queue.'),
 
-  async execute(ctx) {
-    const { guild, reply } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) return ctx.reply({ embeds: [check.embed] });
 
-    if (!queue?.tracks.size) {
-      return reply({ embeds: [errorEmbed("The queue is already empty.")] });
+        const queue = await requireActiveQueue(ctx, player);
+        if (!queue) return;
+
+        const count = queue.tracks.data.length;
+        queue.tracks.clear();
+
+        return ctx.reply({ embeds: [embeds.success(`Cleared **${count}** track(s) from the queue.`)] });
     }
-
-    queue.tracks.clear();
-    return reply({ embeds: [successEmbed("Cleared all upcoming tracks from the queue.")] });
-  },
 };

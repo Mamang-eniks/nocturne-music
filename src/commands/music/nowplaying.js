@@ -1,25 +1,27 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { errorEmbed } = require("../../utils/embeds");
-const { buildNowPlayingEmbed } = require("../../utils/panelManager");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { buildPanelEmbed, buildPanelButtons } = require('../../music/panelManager');
 
 module.exports = {
-  name: "nowplaying",
-  aliases: ["np"],
-  category: "music",
-  description: "Show details about the currently playing track.",
-  data: new SlashCommandBuilder().setName("nowplaying").setDescription("Show details about the currently playing track."),
+    name: 'nowplaying',
+    aliases: ['np'],
+    description: 'Show detailed information about the currently playing track.',
+    cooldown: config.cooldowns.default,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('nowplaying').setDescription('Show detailed information about the currently playing track.'),
 
-  async execute(ctx) {
-    const { guild, reply } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const queue = player.nodes.get(ctx.guild.id);
 
-    if (!queue?.currentTrack) {
-      return reply({ embeds: [errorEmbed("There's nothing playing right now.")] });
+        if (!queue || !queue.currentTrack) {
+            return ctx.reply({ embeds: [embeds.error('There is nothing playing right now.')] });
+        }
+
+        const embed = buildPanelEmbed(queue);
+        const components = buildPanelButtons(queue);
+
+        return ctx.reply({ embeds: [embed], components });
     }
-
-    return reply({ embeds: [buildNowPlayingEmbed(queue, queue.currentTrack)] });
-  },
 };

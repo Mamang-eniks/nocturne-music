@@ -1,24 +1,29 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { successEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { requireActiveQueue, validateVoiceState } = require('../../utils/musicHelpers');
 
 module.exports = {
-  name: "resume",
-  category: "music",
-  description: "Resume the currently paused track.",
-  noPrefix: true,
-  data: new SlashCommandBuilder().setName("resume").setDescription("Resume the currently paused track."),
+    name: 'resume',
+    aliases: ['unpause'],
+    description: 'Resume the currently paused track.',
+    cooldown: config.cooldowns.music,
+    noPrefix: true,
+    slash: new SlashCommandBuilder().setName('resume').setDescription('Resume the currently paused track.'),
 
-  async execute(ctx) {
-    const { guild, reply } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const check = validateVoiceState(ctx, player);
+        if (!check.ok) return ctx.reply({ embeds: [check.embed] });
 
-    if (!queue) return reply({ embeds: [errorEmbed("There's nothing to resume.")] });
-    if (!queue.node.isPaused()) return reply({ embeds: [errorEmbed("Playback isn't paused.")] });
+        const queue = await requireActiveQueue(ctx, player);
+        if (!queue) return;
 
-    queue.node.resume();
-    return reply({ embeds: [successEmbed(`Resumed **${queue.currentTrack.title}**.`)] });
-  },
+        if (!queue.node.isPaused()) {
+            return ctx.reply({ embeds: [embeds.warning('The track is already playing.')] });
+        }
+
+        queue.node.resume();
+        return ctx.reply({ embeds: [embeds.success(`${config.emojis.play} Playback resumed.`)] });
+    }
 };

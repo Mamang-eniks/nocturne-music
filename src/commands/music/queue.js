@@ -1,76 +1,56 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { useMainPlayer } = require("discord-player");
-const { baseEmbed, errorEmbed } = require("../../utils/embeds");
-const { getContext } = require("../../utils/context");
-const { emoji } = require("../../utils/emojis");
-const { truncate } = require("../../utils/format");
+const { SlashCommandBuilder } = require('discord.js');
+const embeds = require('../../utils/embeds');
+const config = require('../../config/config');
+const { formatDuration, truncate } = require('../../utils/format');
 
 const PAGE_SIZE = 10;
 
-function buildPageEmbed(queue, page, totalPages) {
-  const start = page * PAGE_SIZE;
-  const tracks = queue.tracks.toArray().slice(start, start + PAGE_SIZE);
-
-  const list = tracks.length
-    ? tracks
-        .map((t, i) => `**${start + i + 1}.** ${truncate(t.title, 50)} — \`${t.duration}\` (${t.requestedBy})`)
-        .join("\n")
-    : "The queue is empty. Add songs with `/play`.";
-
-  return baseEmbed()
-    .setTitle(`${emoji("queue")} Queue for ${queue.guild.name}`)
-    .setDescription(
-      `**Now Playing:** ${queue.currentTrack ? truncate(queue.currentTrack.title, 60) : "Nothing"}\n\n${list}`
-    )
-    .setFooter({ text: `Page ${page + 1}/${totalPages} • ${queue.tracks.size} track(s) queued` });
-}
-
 module.exports = {
-  name: "queue",
-  aliases: ["q"],
-  category: "music",
-  description: "View the current song queue.",
-  data: new SlashCommandBuilder().setName("queue").setDescription("View the current song queue."),
+    name: 'queue',
+    aliases: ['q'],
+    description: 'Show the current music queue.',
+    cooldown: config.cooldowns.default,
+    noPrefix: true,
+    slash: new SlashCommandBuilder()
+        .setName('queue')
+        .setDescription('Show the current music queue.')
+        .addIntegerOption((opt) => opt.setName('page').setDescription('Page number').setMinValue(1)),
 
-  async execute(ctx) {
-    const { guild, reply } = getContext(ctx);
-    const player = useMainPlayer();
-    const queue = player.nodes.get(guild.id);
+    async execute(ctx) {
+        const player = ctx.client.player;
+        const queue = player.nodes.get(ctx.guild.id);
 
-    if (!queue || (!queue.currentTrack && !queue.tracks.size)) {
-      return reply({ embeds: [errorEmbed("The queue is currently empty.")] });
+        if (!queue || !queue.currentTrack) {
+            return ctx.reply({ embeds: [embeds.error('There is nothing playing right now.')] });
+        }
+
+        const page = Math.max((ctx.getIntegerOption('page') || 1) - 1, 0);
+        const tracks = queue.tracks.toArray();
+        const totalPages = Math.max(Math.ceil(tracks.length / PAGE_SIZE), 1);
+        const clampedPage = Math.min(page, totalPages - 1);
+
+        const slice = tracks.slice(clampedPage * PAGE_SIZE, clampedPage * PAGE_SIZE + PAGE_SIZE);
+
+        const list =
+            slice
+                .map((t, i) => `**${clampedPage * PAGE_SIZE + i + 1}.** [${truncate(t.title, 45)}](${t.url}) — \`${t.duration}\` • ${t.requestedBy}`)
+                .join('\n') || 'No upcoming tracks — this is the last one in the queue.';
+
+        const current = queue.currentTrack;
+        const embed = embeds
+            .info('', 'Music Queue')
+            .setDescription(
+                [
+                    `${config.emojis.music} **Now Playing:** [${truncate(current.title, 50)}](${current.url}) — \`${formatDuration(
+                        queue.node.getTimestamp()?.current?.value ?? 0
+                    )} / ${current.duration}\``,
+                    '',
+                    '**Up Next:**',
+                    list
+                ].join('\n')
+            )
+            .setFooter({ text: `Nocturne • Page ${clampedPage + 1}/${totalPages} • ${tracks.length} track(s) queued` });
+
+        return ctx.reply({ embeds: [embed] });
     }
-
-    const totalPages = Math.max(1, Math.ceil(queue.tracks.size / PAGE_SIZE));
-    let page = 0;
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("queue_prev").setLabel("◀ Previous").setStyle(ButtonStyle.Secondary).setDisabled(true),
-      new ButtonBuilder()
-        .setCustomId("queue_next")
-        .setLabel("Next ▶")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(totalPages <= 1)
-    );
-
-    const sent = await reply({ embeds: [buildPageEmbed(queue, page, totalPages)], components: [row], fetchReply: true });
-
-    // Lightweight local collector — pagination is scoped to this single reply only.
-    const collector = sent.createMessageComponentCollector({ time: 60_000 });
-
-    collector.on("collect", async (i) => {
-      if (i.customId === "queue_next") page = Math.min(page + 1, totalPages - 1);
-      if (i.customId === "queue_prev") page = Math.max(page - 1, 0);
-
-      row.components[0].setDisabled(page === 0);
-      row.components[1].setDisabled(page === totalPages - 1);
-
-      await i.update({ embeds: [buildPageEmbed(queue, page, totalPages)], components: [row] });
-    });
-
-    collector.on("end", () => {
-      row.components.forEach((c) => c.setDisabled(true));
-      sent.edit({ components: [row] }).catch(() => {});
-    });
-  },
 };
