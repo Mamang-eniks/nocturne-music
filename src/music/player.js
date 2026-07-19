@@ -42,8 +42,16 @@ async function initPlayer(client) {
         // deciphers the format URL itself instead of assuming one is already present,
         // which is the reliable path now that youtubei.js is pinned to a current
         // version (see the "youtubei.js" entry under "overrides" in package.json).
+        //
+        // generateWithPoToken solves a different, more insidious problem: WITHOUT a
+        // valid PoToken, YouTube can return a format URL that resolves and reports a
+        // valid content-length (so nothing throws anywhere in the pipeline) but whose
+        // actual bytes are throttled/empty — the track "plays" with zero audible
+        // audio and no error. This generates and periodically refreshes a real
+        // PoToken via bgutils-js so requests are treated as legitimate.
         const instance = await player.extractors.register(YoutubeiExtractor, {
-            streamOptions: { useClient: 'WEB' }
+            streamOptions: { useClient: 'WEB' },
+            generateWithPoToken: true
         });
 
         if (!instance) {
@@ -132,6 +140,45 @@ async function initPlayer(client) {
     // graceful cases below on a per-queue basis at creation time).
 
     logger.success('Player', 'discord-player initialized with default extractors.');
+
+    // ── Verbose diagnostics ─────────────────────────────
+    // Every prior playback fix (encryption, opus, extractor, PoToken) has produced
+    // the exact same symptom: reported success, zero audible audio, zero errors
+    // anywhere in the normal event handlers above. That pattern means the failure
+    // is happening somewhere inside discord-player/@discordjs/voice's internals
+    // that we're not otherwise shown — these two debug listeners surface that
+    // internal logging (voice connection state transitions, FFmpeg/stream spawn
+    // info, packet dispatch) so the real point of failure can be identified from
+    // the Railway logs instead of guessed at.
+    player.on('debug', (message) => {
+        logger.info('PlayerDebug', message);
+    });
+
+    player.events.on('debug', (queue, message) => {
+        logger.info(`QueueDebug:${queue.guild.name}`, message);
+    });
+
+    // Voice connection state transitions happen below discord-player's own error
+    // handling — if the underlying UDP/RTP connection to Discord's voice servers
+    // never reaches "ready" (or drops silently after), tracks will report as
+    // "playing" with zero audio and no error anywhere else in this file.
+    player.events.on('connection', (queue) => {
+        const connection = queue.connection;
+        logger.info(`Voice:${queue.guild.name}`, `Connection object created. Initial state: ${connection?.state?.status}`);
+
+        connection?.on('stateChange', (oldState, newState) => {
+            logger.info(`Voice:${queue.guild.name}`, `Connection state changed: ${oldState.status} -> ${newState.status}`);
+        });
+
+        connection?.on('error', (err) => {
+            logger.error(`Voice:${queue.guild.name}`, 'Voice connection error.', err);
+        });
+    });
+
+    player.events.on('playerFinish', (queue, track) => {
+        logger.music(queue.guild.name, `Finished playing: ${track.title}`);
+    });
+
     return player;
 }
 
