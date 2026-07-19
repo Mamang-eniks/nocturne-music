@@ -1,7 +1,7 @@
 {
   "name": "nocturne-music-bot",
   "version": "1.0.0",
-  "description": "Nocturne — a premium, production-ready Discord music bot built with discord.js v14 and discord-player.",
+  "description": "Nocturne \u2014 a premium, production-ready Discord music bot built with discord.js v14 and discord-player.",
   "main": "src/index.js",
   "type": "commonjs",
   "engines": {
@@ -40,5 +40,8 @@
   },
   "devDependencies": {
     "eslint": "^8.57.1"
+  },
+  "overrides": {
+    "youtubei.js": "^17.2.0"
   }
 }
