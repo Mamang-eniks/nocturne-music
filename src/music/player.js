@@ -35,7 +35,16 @@ async function initPlayer(client) {
     // a failed activation would silently leave the bot with no YouTube support at all.
     try {
         const { YoutubeiExtractor } = require('discord-player-youtubei');
-        const instance = await player.extractors.register(YoutubeiExtractor, {});
+        // Force the WEB client for streaming: the library's default (IOS) expects
+        // YouTube to hand back a ready-to-use format URL with no deciphering, but
+        // YouTube doesn't always provide that for every format anymore, which
+        // throws "Not matching URL for this format found". The WEB client always
+        // deciphers the format URL itself instead of assuming one is already present,
+        // which is the reliable path now that youtubei.js is pinned to a current
+        // version (see the "youtubei.js" entry under "overrides" in package.json).
+        const instance = await player.extractors.register(YoutubeiExtractor, {
+            streamOptions: { useClient: 'WEB' }
+        });
 
         if (!instance) {
             throw new Error('YoutubeiExtractor.register() returned null — activation failed.');
