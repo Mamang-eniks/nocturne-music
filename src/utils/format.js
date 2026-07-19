@@ -1,47 +1,66 @@
-const config = require("../config/config");
-
 /**
- * Formats milliseconds into HH:MM:SS or MM:SS.
+ * ─────────────────────────────────────────────
+ *  Format Helpers — progress bars, durations, truncation
+ * ─────────────────────────────────────────────
  */
-function formatDuration(ms) {
-  if (!ms || Number.isNaN(ms)) return "00:00";
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
 
-  const pad = (n) => String(n).padStart(2, "0");
+const config = require('../config/config');
 
-  if (hours > 0) return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  return `${pad(minutes)}:${pad(seconds)}`;
-}
+module.exports = {
+    /**
+     * Builds a text progress bar for the currently playing track.
+     * @param {number} currentMs
+     * @param {number} totalMs
+     * @param {number} size number of segments in the bar
+     */
+    progressBar(currentMs, totalMs, size = 18) {
+        if (!totalMs || totalMs <= 0) {
+            // Live streams / unknown duration
+            return `${config.emojis.dot.repeat ? '' : ''}🔴 LIVE`;
+        }
 
-/**
- * Builds a premium-styled progress bar string using the loop/dot glyphs.
- * Example: ▬▬▬🔘▬▬▬▬▬▬▬▬  02:14 / 03:45
- */
-function progressBar(currentMs, totalMs, length = config.music.progressBarLength) {
-  if (!totalMs || totalMs <= 0) {
-    return `\`${"▬".repeat(length)}\` 🔴 LIVE`;
-  }
+        const ratio = Math.min(Math.max(currentMs / totalMs, 0), 1);
+        const filledCount = Math.round(size * ratio);
+        const emptyCount = size - filledCount;
 
-  const ratio = Math.min(Math.max(currentMs / totalMs, 0), 1);
-  const position = Math.round(ratio * length);
+        const filled = '▰'.repeat(filledCount);
+        const empty = '▱'.repeat(emptyCount);
 
-  const bar =
-    "▬".repeat(Math.max(position - 1, 0)) +
-    "🔘" +
-    "▬".repeat(Math.max(length - position, 0));
+        return `${filled}${empty}`;
+    },
 
-  return `\`${formatDuration(currentMs)}\` ${bar} \`${formatDuration(totalMs)}\``;
-}
+    /** Formats milliseconds as H:MM:SS or M:SS. */
+    formatDuration(ms) {
+        if (!ms || ms <= 0 || Number.isNaN(ms)) return 'LIVE';
 
-/**
- * Truncates long strings (titles, descriptions) with an ellipsis.
- */
-function truncate(str, max = 60) {
-  if (!str) return "";
-  return str.length > max ? `${str.slice(0, max - 1)}…` : str;
-}
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
 
-module.exports = { formatDuration, progressBar, truncate };
+        const pad = (n) => String(n).padStart(2, '0');
+
+        if (hours > 0) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+        return `${minutes}:${pad(seconds)}`;
+    },
+
+    /** Truncates text to a max length, appending an ellipsis if cut. */
+    truncate(text, max = 60) {
+        if (!text) return '';
+        return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    },
+
+    /** Picks a source-appropriate emoji for a track. */
+    sourceEmoji(source) {
+        switch ((source || '').toLowerCase()) {
+            case 'spotify':
+                return config.emojis.spotify;
+            case 'youtube':
+                return config.emojis.youtube;
+            case 'soundcloud':
+                return config.emojis.soundcloud;
+            default:
+                return config.emojis.music;
+        }
+    }
+};

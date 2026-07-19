@@ -1,44 +1,56 @@
-const { EmbedBuilder } = require("discord.js");
-const config = require("../config/config");
-const { emoji } = require("./emojis");
-
 /**
- * All embeds across the bot are built through this factory so the
- * dark-purple/premium theme stays perfectly consistent everywhere.
+ * ─────────────────────────────────────────────
+ *  Embed Factory — consistent, premium-themed embeds
+ * ─────────────────────────────────────────────
+ * Centralizing embed construction means every command shares the same
+ * dark-purple identity instead of hand-rolling colors/footers everywhere.
  */
 
+const { EmbedBuilder } = require('discord.js');
+const config = require('../config/config');
+
+const FOOTER_TEXT = 'Nocturne';
+
 function baseEmbed() {
-  return new EmbedBuilder()
-    .setColor(config.colors.primary)
-    .setFooter({ text: `${config.name} • Premium Sound Experience`, iconURL: config.assets.footerIcon })
-    .setTimestamp();
+    return new EmbedBuilder()
+        .setColor(config.colors.primary)
+        .setFooter({ text: FOOTER_TEXT })
+        .setTimestamp();
 }
 
-function successEmbed(description, title = "Success") {
-  return baseEmbed()
-    .setColor(config.colors.success)
-    .setTitle(`${emoji("success")} ${title}`)
-    .setDescription(description);
-}
+module.exports = {
+    /** Neutral informational embed. */
+    info(description, title = null) {
+        const embed = baseEmbed().setDescription(`${config.emojis.music} ${description}`);
+        if (title) embed.setTitle(title);
+        return embed;
+    },
 
-function errorEmbed(description, title = "Something went wrong") {
-  return baseEmbed()
-    .setColor(config.colors.danger)
-    .setTitle(`${emoji("error")} ${title}`)
-    .setDescription(description);
-}
+    /** Success (green) embed. */
+    success(description, title = null) {
+        const embed = baseEmbed()
+            .setColor(config.colors.success)
+            .setDescription(`${config.emojis.success} ${description}`);
+        if (title) embed.setTitle(title);
+        return embed;
+    },
 
-function warningEmbed(description, title = "Hold on") {
-  return baseEmbed()
-    .setColor(config.colors.warning)
-    .setTitle(`${emoji("warning")} ${title}`)
-    .setDescription(description);
-}
+    /** Error (red) embed. */
+    error(description, title = 'Something went wrong') {
+        return baseEmbed()
+            .setColor(config.colors.danger)
+            .setTitle(title)
+            .setDescription(`${config.emojis.error} ${description}`);
+    },
 
-function infoEmbed(description, title = config.name) {
-  return baseEmbed()
-    .setTitle(`${emoji("music")} ${title}`)
-    .setDescription(description);
-}
+    /** Warning (yellow) embed. */
+    warning(description, title = null) {
+        const embed = baseEmbed()
+            .setColor(config.colors.warning)
+            .setDescription(`${config.emojis.error} ${description}`);
+        if (title) embed.setTitle(title);
+        return embed;
+    },
 
-module.exports = { baseEmbed, successEmbed, errorEmbed, warningEmbed, infoEmbed };
+    baseEmbed
+};
