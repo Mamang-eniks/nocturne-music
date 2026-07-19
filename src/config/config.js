@@ -47,9 +47,9 @@ module.exports = {
 
   // ── Assets ───────────────────────────────────────────────────────────
   assets: {
-    footerIcon: "https://imgur.com/a/MFloGiL#aeISMH8", // replace with hosted Nocturne logo
-    thumbnailFallback: "https://imgur.com/a/MFloGiL#aeISMH8",
-    bannerImage: "https://imgur.com/a/MFloGiL#PKRCPF7",
+    footerIcon: "https://res.cloudinary.com/dnpvgpqka/image/upload/v1784455261/umIdRKQNu8y8hYX-K2kkBKhlkkHU4vT-2J-S6Ct7Js-jkuULBWLVTV_6BggPo6o5qxJIPQ4XLN42hPTjfYrS1walX7fbrD", // replace with hosted Nocturne logo
+    thumbnailFallback: "https://res.cloudinary.com/dnpvgpqka/image/upload/v1784455261/umIdRKQNu8y8hYX-K2kkBKhlkkHU4vT-2J-S6Ct7Js-jkuULBWLVTV_6BggPo6o5qxJIPQ4XLN42hPTjfYrS1walX7fbrD",
+    bannerImage: "https://res.cloudinary.com/dnpvgpqka/image/upload/v1784455244/009da887-621f-4ca5-8c8e-9c4cad1ed834_nyb1cd.png",
   },
 
   // ── Custom Emoji System ──────────────────────────────────────────────
