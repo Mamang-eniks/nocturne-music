@@ -24,7 +24,7 @@
   "license": "MIT",
   "dependencies": {
     "@discord-player/extractor": "^4.5.1",
-    "@discordjs/voice": "^0.17.0",
+    "@discordjs/voice": "^0.19.2",
     "@distube/ytdl-core": "^4.16.12",
     "discord-player": "^6.7.1",
     "discord-player-youtubei": "^1.5.0",
