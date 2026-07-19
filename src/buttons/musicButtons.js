@@ -1,5 +1,5 @@
 const { errorEmbed, infoEmbed } = require("../utils/embeds");
-const { buildNowPlayingEmbed, buildControlRows } = require("../utils/panelManager");
+const { buildNowPlayingEmbed, buildControlRows } = require("../music/panelManager");
 const { emoji } = require("../utils/emojis");
 const config = require("../config/config");
 
