@@ -1,80 +1,82 @@
 /**
- * Nocturne — Main Entrypoint
- * ───────────────────────────
- * Boot order matters here:
- *   1. Create the Discord client (needs the right gateway intents for voice).
- *   2. Connect to MongoDB (non-blocking — bot still runs if DB is unreachable).
- *   3. Initialize discord-player (must happen before player events load).
- *   4. Load commands, events, buttons.
- *   5. Log in.
- *   6. Wire up global anti-crash handlers so one bad promise never kills Railway.
+ * ─────────────────────────────────────────────
+ *  NOCTURNE — Entry Point
+ * ─────────────────────────────────────────────
+ * Boots the Discord client, database connection, discord-player instance,
+ * and every handler (commands, events, buttons). Also installs process-level
+ * anti-crash guards so a single unhandled error never takes the bot offline.
  */
 
-const { Client, GatewayIntentBits, Partials } = require("discord.js");
-const config = require("./config/config");
-const logger = require("./utils/logger");
-const connectDatabase = require("./database/connect");
-const initializePlayer = require("./music/player");
-const loadCommands = require("./handlers/commandHandler");
-const loadEvents = require("./handlers/eventHandler");
-const loadButtons = require("./handlers/buttonHandler");
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const config = require('./config/config');
+const logger = require('./utils/logger');
+const { connectDatabase } = require('./database/connect');
+const { loadCommands } = require('./handlers/commandHandler');
+const { loadEvents } = require('./handlers/eventHandler');
+const { loadButtons } = require('./handlers/buttonHandler');
+const { initPlayer } = require('./music/player');
 
-async function bootstrap() {
-  if (!config.token || !config.clientId) {
-    logger.error("TOKEN and CLIENT_ID must be set in your environment. Exiting.");
+// ── Startup validation ──────────────────────────────────
+const requiredEnv = ['TOKEN', 'CLIENT_ID'];
+const missing = requiredEnv.filter((key) => !process.env[key]);
+if (missing.length) {
+    logger.error('Startup', `Missing required environment variable(s): ${missing.join(', ')}. Check your .env / Railway variables.`);
     process.exit(1);
-  }
-
-  const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
-      GatewayIntentBits.GuildVoiceStates,
-      GatewayIntentBits.GuildMembers,
-    ],
-    partials: [Partials.Channel, Partials.Message],
-  });
-
-  // ── Database ──────────────────────────────────────────────────────────
-  await connectDatabase();
-
-  // ── Music Engine ──────────────────────────────────────────────────────
-  await initializePlayer(client);
-
-  // ── Handlers (order matters: commands/buttons before events that use them) ─
-  loadCommands(client);
-  loadButtons(client);
-  loadEvents(client); // requires client.player to already exist
-
-  // ── Login ─────────────────────────────────────────────────────────────
-  await client.login(config.token);
-
-  return client;
 }
 
-// ── Anti-Crash System ─────────────────────────────────────────────────────
-// Discord bots run 24/7 on Railway — a single unhandled rejection or
-// exception should never take the whole process down. We log everything
-// instead of letting Node.js exit.
-process.on("unhandledRejection", (reason) => {
-  logger.error(`Unhandled Rejection: ${reason?.stack || reason}`);
+// ── Client setup ─────────────────────────────────────────
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMembers
+    ],
+    partials: [Partials.Channel, Partials.Message]
 });
 
-process.on("uncaughtException", (error) => {
-  logger.error(`Uncaught Exception: ${error.stack || error.message}`);
+client.logger = logger;
+client.config = config;
+
+async function bootstrap() {
+    logger.info('Startup', 'Booting Nocturne...');
+
+    await connectDatabase();
+
+    loadCommands(client);
+    loadEvents(client);
+    loadButtons(client);
+
+    await initPlayer(client);
+
+    await client.login(config.token);
+}
+
+bootstrap().catch((err) => {
+    logger.error('Startup', 'Fatal error during startup — the process will exit.', err);
+    process.exit(1);
 });
 
-process.on("uncaughtExceptionMonitor", (error) => {
-  logger.error(`Uncaught Exception Monitor: ${error.stack || error.message}`);
+// ── Anti-crash guards ────────────────────────────────────
+// These never let a single misbehaving promise or synchronous throw take the
+// whole bot down; everything is logged so the root cause is still visible.
+process.on('unhandledRejection', (reason) => {
+    logger.error('AntiCrash', 'Unhandled promise rejection.', reason instanceof Error ? reason : new Error(String(reason)));
 });
 
-process.on("SIGTERM", () => {
-  logger.warn("Received SIGTERM (Railway redeploy/shutdown). Exiting gracefully.");
-  process.exit(0);
+process.on('uncaughtException', (err) => {
+    logger.error('AntiCrash', 'Uncaught exception.', err);
 });
 
-bootstrap().catch((error) => {
-  logger.error(`Fatal error during bootstrap: ${error.stack || error.message}`);
-  process.exit(1);
+process.on('uncaughtExceptionMonitor', (err) => {
+    logger.error('AntiCrash', 'Uncaught exception monitor triggered.', err);
 });
+
+process.on('SIGTERM', () => {
+    logger.warn('Shutdown', 'Received SIGTERM — shutting down gracefully.');
+    client.destroy();
+    process.exit(0);
+});
+
+module.exports = client;
