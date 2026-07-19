@@ -1,0 +1,33 @@
+{
+  "name": "nocturne-music-bot",
+  "version": "1.0.0",
+  "description": "Nocturne — a premium, production-ready Discord music bot built with discord.js v14 and discord-player.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": ["discord", "music-bot", "discord.js", "discord-player", "nocturne"],
+  "author": "Joel",
+  "license": "MIT",
+  "dependencies": {
+    "@discordjs/opus": "^0.9.0",
+    "@discordjs/voice": "^0.17.0",
+    "discord-player": "^6.7.1",
+    "@discord-player/extractor": "^4.5.1",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "ffmpeg-static": "^5.2.0",
+    "libsodium-wrappers": "^0.7.15",
+    "mongoose": "^8.5.1",
+    "mediaplex": "^0.0.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
