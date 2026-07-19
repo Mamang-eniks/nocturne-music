@@ -24,13 +24,27 @@ async function initPlayer(client) {
 
     // Loads YouTube / SoundCloud / Vimeo / Spotify(-bridged) / Apple Music extractors.
     await player.extractors.loadDefault((ext) => ext !== 'YouTubeExtractor');
-    // Load the YouTube extractor explicitly last so it takes priority for search.
+    // discord-player-youtubei uses the youtubei.js library (mimics the real YouTube
+    // app's InnerTube API) instead of scraping, which is far more resistant to
+    // YouTube's anti-bot changes than the bundled YouTubeExtractor.
+    //
+    // IMPORTANT: ExtractorExecutionContext#register() does NOT throw on failure —
+    // it resolves to `null` if the extractor's activate() call fails (e.g. a
+    // transient network/YouTube-side issue). We must check the return value
+    // explicitly and fall back to the bundled extractor if it's null, otherwise
+    // a failed activation would silently leave the bot with no YouTube support at all.
     try {
         const { YoutubeiExtractor } = require('discord-player-youtubei');
-        await player.extractors.register(YoutubeiExtractor, {});
-    } catch {
-        // discord-player-youtubei is optional; the bundled default YouTube extractor
-        // (loaded via loadDefault above with the filter removed) will be used instead.
+        const instance = await player.extractors.register(YoutubeiExtractor, {});
+
+        if (!instance) {
+            throw new Error('YoutubeiExtractor.register() returned null — activation failed.');
+        }
+
+        logger.success('Player', 'YoutubeiExtractor registered as the YouTube search/stream provider.');
+    } catch (err) {
+        logger.warn('Player', 'YoutubeiExtractor failed to activate — falling back to the bundled YouTube extractor.');
+        logger.error('Player', 'YoutubeiExtractor registration error:', err);
         await player.extractors.loadDefault();
     }
 
