@@ -1,65 +1,66 @@
-const fs = require("fs");
-const path = require("path");
-const { Collection } = require("discord.js");
-const logger = require("../utils/logger");
-
 /**
- * Recursively loads every command file under src/commands/** into
- * client.commands (by name) and client.aliases (alias → name).
- *
- * Each command module must export:
- * {
- *   name: string,
- *   aliases?: string[],
- *   category: "music" | "utility" | "owner" | "system",
- *   description: string,
- *   data?: SlashCommandBuilder,      // for slash registration
- *   ownerOnly?: boolean,
- *   noPrefix?: boolean,              // allowed as a no-prefix owner command
- *   cooldown?: number,               // seconds
- *   permissions?: PermissionResolvable[],
- *   execute(context): Promise<void> // unified handler, see below
- * }
+ * ─────────────────────────────────────────────
+ *  Command Handler — recursive command loader
+ * ─────────────────────────────────────────────
+ * Walks src/commands/<category>/*.js, validates each module's shape, and
+ * registers it into client.commands (+ client.aliases). Also builds the
+ * flat array of slash command JSON used by the deploy script.
  */
+
+const fs = require('fs');
+const path = require('path');
+const { Collection } = require('discord.js');
+const logger = require('../utils/logger');
+
 function loadCommands(client) {
-  client.commands = new Collection();
-  client.aliases = new Collection();
+    client.commands = new Collection();
+    client.aliases = new Collection();
+    client.slashCommandsData = [];
 
-  const commandsPath = path.join(__dirname, "..", "commands");
-  const categories = fs.readdirSync(commandsPath);
+    const commandsPath = path.join(__dirname, '..', 'commands');
+    const categories = fs.readdirSync(commandsPath).filter((f) =>
+        fs.statSync(path.join(commandsPath, f)).isDirectory()
+    );
 
-  let total = 0;
+    let loaded = 0;
 
-  for (const category of categories) {
-    const categoryPath = path.join(commandsPath, category);
-    if (!fs.statSync(categoryPath).isDirectory()) continue;
+    for (const category of categories) {
+        const categoryPath = path.join(commandsPath, category);
+        const files = fs.readdirSync(categoryPath).filter((f) => f.endsWith('.js'));
 
-    const files = fs.readdirSync(categoryPath).filter((f) => f.endsWith(".js"));
+        for (const file of files) {
+            const filePath = path.join(categoryPath, file);
 
-    for (const file of files) {
-      const filePath = path.join(categoryPath, file);
-      delete require.cache[require.resolve(filePath)];
-      const command = require(filePath);
+            try {
+                delete require.cache[require.resolve(filePath)];
+                const command = require(filePath);
 
-      if (!command.name) {
-        logger.warn(`Skipped invalid command file (missing "name"): ${file}`);
-        continue;
-      }
+                if (!command?.name || typeof command.execute !== 'function') {
+                    logger.warn('CommandHandler', `Skipped invalid command file: ${category}/${file}`);
+                    continue;
+                }
 
-      command.category = command.category || category;
-      client.commands.set(command.name, command);
+                command.category = category;
+                client.commands.set(command.name, command);
 
-      if (Array.isArray(command.aliases)) {
-        for (const alias of command.aliases) {
-          client.aliases.set(alias, command.name);
+                if (Array.isArray(command.aliases)) {
+                    for (const alias of command.aliases) {
+                        client.aliases.set(alias, command.name);
+                    }
+                }
+
+                if (command.slash) {
+                    client.slashCommandsData.push(command.slash.toJSON());
+                }
+
+                loaded += 1;
+            } catch (err) {
+                logger.error('CommandHandler', `Failed to load command ${category}/${file}`, err);
+            }
         }
-      }
-
-      total++;
     }
-  }
 
-  logger.info(`Loaded ${total} command(s) across ${categories.length} categories.`);
+    logger.success('CommandHandler', `Loaded ${loaded} commands across ${categories.length} categories.`);
 }
 
-module.exports = loadCommands;
+module.exports = { loadCommands };

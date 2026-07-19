@@ -1,47 +1,46 @@
-const fs = require("fs");
-const path = require("path");
-const logger = require("../utils/logger");
-
 /**
- * Loads client (discord.js) events from events/client and
- * player (discord-player) events from events/player.
- *
- * Client event files export: { name, once?, execute(client, ...args) }
- * Player event files export: { name, execute(client, ...args) } and are
- * bound to client.player.events instead of client itself.
+ * ─────────────────────────────────────────────
+ *  Event Handler — recursive event loader
+ * ─────────────────────────────────────────────
+ * Loads every file in src/events and binds it to the client via
+ * client.once/client.on depending on the exported `once` flag.
  */
+
+const fs = require('fs');
+const path = require('path');
+const logger = require('../utils/logger');
+
 function loadEvents(client) {
-  // ── discord.js client events ──────────────────────────────────────
-  const clientEventsPath = path.join(__dirname, "..", "events", "client");
-  const clientEventFiles = fs.readdirSync(clientEventsPath).filter((f) => f.endsWith(".js"));
+    const eventsPath = path.join(__dirname, '..', 'events');
+    const files = fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'));
 
-  for (const file of clientEventFiles) {
-    const event = require(path.join(clientEventsPath, file));
-    if (!event.name || !event.execute) {
-      logger.warn(`Skipped invalid client event file: ${file}`);
-      continue;
-    }
-    if (event.once) {
-      client.once(event.name, (...args) => event.execute(client, ...args));
-    } else {
-      client.on(event.name, (...args) => event.execute(client, ...args));
-    }
-  }
-  logger.info(`Loaded ${clientEventFiles.length} client event(s).`);
+    let loaded = 0;
 
-  // ── discord-player events ─────────────────────────────────────────
-  const playerEventsPath = path.join(__dirname, "..", "events", "player");
-  const playerEventFiles = fs.readdirSync(playerEventsPath).filter((f) => f.endsWith(".js"));
+    for (const file of files) {
+        const filePath = path.join(eventsPath, file);
 
-  for (const file of playerEventFiles) {
-    const event = require(path.join(playerEventsPath, file));
-    if (!event.name || !event.execute) {
-      logger.warn(`Skipped invalid player event file: ${file}`);
-      continue;
+        try {
+            delete require.cache[require.resolve(filePath)];
+            const event = require(filePath);
+
+            if (!event?.name || typeof event.execute !== 'function') {
+                logger.warn('EventHandler', `Skipped invalid event file: ${file}`);
+                continue;
+            }
+
+            if (event.once) {
+                client.once(event.name, (...args) => event.execute(...args, client));
+            } else {
+                client.on(event.name, (...args) => event.execute(...args, client));
+            }
+
+            loaded += 1;
+        } catch (err) {
+            logger.error('EventHandler', `Failed to load event ${file}`, err);
+        }
     }
-    client.player.events.on(event.name, (...args) => event.execute(client, ...args));
-  }
-  logger.info(`Loaded ${playerEventFiles.length} player event(s).`);
+
+    logger.success('EventHandler', `Loaded ${loaded} events.`);
 }
 
-module.exports = loadEvents;
+module.exports = { loadEvents };
