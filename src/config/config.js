@@ -47,9 +47,9 @@ module.exports = {
 
   // ── Assets ───────────────────────────────────────────────────────────
   assets: {
-    footerIcon: "https://i.imgur.com/6yUpAbg.png", // replace with hosted Nocturne logo
-    thumbnailFallback: "https://i.imgur.com/6yUpAbg.png",
-    bannerImage: "https://i.imgur.com/wq6Etsq.png",
+    footerIcon: "https://imgur.com/a/MFloGiL#aeISMH8", // replace with hosted Nocturne logo
+    thumbnailFallback: "https://imgur.com/a/MFloGiL#aeISMH8",
+    bannerImage: "https://imgur.com/a/MFloGiL#PKRCPF7",
   },
 
   // ── Custom Emoji System ──────────────────────────────────────────────
