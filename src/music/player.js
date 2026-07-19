@@ -49,9 +49,17 @@ async function initPlayer(client) {
         // actual bytes are throttled/empty — the track "plays" with zero audible
         // audio and no error. This generates and periodically refreshes a real
         // PoToken via bgutils-js so requests are treated as legitimate.
+        // overrideDownloadOptions solves a THIRD, separate bug: the library hardcodes
+        // format: "mp4" when picking an audio format, which filters out webm/opus
+        // audio-only streams. Many videos only serve audio as webm/opus, so that
+        // filter can leave chooseFormat() returning a format with no usable url or
+        // cipher data at all — surfacing as "No valid URL to decipher" even after
+        // the await fix above. format: "any" removes the container restriction so
+        // chooseFormat() can pick from every available audio format.
         const instance = await player.extractors.register(YoutubeiExtractor, {
             streamOptions: { useClient: 'WEB' },
-            generateWithPoToken: true
+            generateWithPoToken: true,
+            overrideDownloadOptions: { type: 'audio', quality: 'best', format: 'any' }
         });
 
         if (!instance) {
