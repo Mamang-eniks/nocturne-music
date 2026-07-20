@@ -1,8 +1,14 @@
-# With @discordjs/opus removed (see package.json), Nocturne no longer needs
-# a C/C++ toolchain at install time -- every dependency (opusscript, mediaplex,
-# ffmpeg-static) ships as pure JS or a prebuilt native binary. This keeps the
-# Railway build fast and avoids the native-compile failures that older
-# node-gyp-based packages run into on newer glibc/GCC images.
+# @discordjs/opus was removed (see package.json) so no C/C++ toolchain is
+# needed for npm packages -- everything else ships as pure JS or a prebuilt
+# native binary. The one addition below, "yt-dlp", is pulled straight from
+# Nix's own package cache (not GitHub), so it installs reliably without
+# hitting GitHub API rate limits the way youtube-dl-exec's own downloader did.
+# yt-dlp is used at runtime (see src/music/player.js) to resolve a playable
+# audio URL for a track -- it's far more actively maintained against
+# YouTube's anti-bot changes than any Node-based decipher implementation.
+
+[phases.setup]
+nixPkgs = ["...", "yt-dlp"]
 
 [phases.install]
 cmds = ["npm install --omit=dev"]
