@@ -9,12 +9,50 @@
  */
 
 const { Player } = require('discord-player');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const config = require('../config/config');
 const logger = require('../utils/logger');
 const embeds = require('../utils/embeds');
 const { upsertPanel } = require('./panelManager');
 const MusicHistory = require('../models/MusicHistory');
 const GuildSettings = require('../models/GuildSettings');
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Resolves a playable direct audio URL for a track using yt-dlp (installed via
+ * Nix — see nixpacks.toml — not the npm ecosystem, so no GitHub-download step).
+ *
+ * This replaces youtubei.js's own decipher/format-selection logic entirely.
+ * Across extensive testing, every youtubei.js client mode (IOS, WEB, TV_EMBEDDED,
+ * ANDROID) failed for at least some videos — either missing a direct format URL,
+ * missing streaming_data outright, or requiring a PoToken that's unreliable to
+ * generate outside a real browser. yt-dlp is a full, independently and very
+ * actively maintained project (daily updates) dedicated to keeping up with
+ * YouTube's anti-bot changes, so it succeeds far more consistently than us
+ * hand-rolling the same logic in JS.
+ */
+async function resolveStreamWithYtDlp(track) {
+    const { stdout } = await execFileAsync(
+        'yt-dlp',
+        [
+            '--get-url',
+            '-f', 'bestaudio',
+            '--no-warnings',
+            '--no-check-certificates',
+            '--prefer-free-formats',
+            '--add-header', 'referer:youtube.com',
+            '--add-header', 'user-agent:googlebot',
+            track.url
+        ],
+        { timeout: 20_000 }
+    );
+
+    const url = stdout.trim().split('\n')[0];
+    if (!url) throw new Error('yt-dlp did not return a stream URL.');
+    return url;
+}
 
 async function initPlayer(client) {
     const player = new Player(client, {
@@ -24,9 +62,10 @@ async function initPlayer(client) {
 
     // Loads YouTube / SoundCloud / Vimeo / Spotify(-bridged) / Apple Music extractors.
     await player.extractors.loadDefault((ext) => ext !== 'YouTubeExtractor');
-    // discord-player-youtubei uses the youtubei.js library (mimics the real YouTube
-    // app's InnerTube API) instead of scraping, which is far more resistant to
-    // YouTube's anti-bot changes than the bundled YouTubeExtractor.
+    // discord-player-youtubei is still used for SEARCH and metadata (title, author,
+    // duration, thumbnail) — that side has worked reliably in every test so far.
+    // Only the actual audio URL resolution is handed off to yt-dlp via createStream
+    // below, since that's the step that kept failing across every client mode.
     //
     // IMPORTANT: ExtractorExecutionContext#register() does NOT throw on failure —
     // it resolves to `null` if the extractor's activate() call fails (e.g. a
@@ -35,49 +74,15 @@ async function initPlayer(client) {
     // a failed activation would silently leave the bot with no YouTube support at all.
     try {
         const { YoutubeiExtractor } = require('discord-player-youtubei');
-        // Force the WEB client for streaming: the library's default (IOS) expects
-        // YouTube to hand back a ready-to-use format URL with no deciphering, but
-        // YouTube doesn't always provide that for every format anymore, which
-        // throws "Not matching URL for this format found". The WEB client always
-        // deciphers the format URL itself instead of assuming one is already present,
-        // which is the reliable path now that youtubei.js is pinned to a current
-        // version (see the "youtubei.js" entry under "overrides" in package.json).
-        //
-        // generateWithPoToken solves a different, more insidious problem: WITHOUT a
-        // valid PoToken, YouTube can return a format URL that resolves and reports a
-        // valid content-length (so nothing throws anywhere in the pipeline) but whose
-        // actual bytes are throttled/empty — the track "plays" with zero audible
-        // audio and no error. This generates and periodically refreshes a real
-        // PoToken via bgutils-js so requests are treated as legitimate.
-        // overrideDownloadOptions solves a THIRD, separate bug: the library hardcodes
-        // format: "mp4" when picking an audio format, which filters out webm/opus
-        // audio-only streams. Many videos only serve audio as webm/opus, so that
-        // filter can leave chooseFormat() returning a format with no usable url or
-        // cipher data at all — surfacing as "No valid URL to decipher" even after
-        // the await fix above. format: "any" removes the container restriction so
-        // chooseFormat() can pick from every available audio format.
-        // Client selection history (see inline comments below for why this matters):
-        //   IOS (library default): expects a ready-to-use format.url with no
-        //     decipher step, but often gets format entries with no url at all.
-        //   WEB: always deciphers, but requires a genuinely valid PoToken to get
-        //     ANY streaming_data back at all — generateWithPoToken relies on
-        //     bgutils-js solving a BotGuard challenge via jsdom, which isn't
-        //     reliable in a headless server environment like Railway, so WEB
-        //     requests were coming back with no streaming_data whatsoever.
-        //   TV_EMBEDDED: doesn't require deciphering OR a PoToken, and is the
-        //     client currently most consistently able to return full streaming
-        //     data + direct format URLs for youtubei.js-based extractors.
         const instance = await player.extractors.register(YoutubeiExtractor, {
-            streamOptions: { useClient: 'TV_EMBEDDED' },
-            generateWithPoToken: true,
-            overrideDownloadOptions: { type: 'audio', quality: 'best', format: 'any' }
+            createStream: (track) => resolveStreamWithYtDlp(track)
         });
 
         if (!instance) {
             throw new Error('YoutubeiExtractor.register() returned null — activation failed.');
         }
 
-        logger.success('Player', 'YoutubeiExtractor registered as the YouTube search/stream provider.');
+        logger.success('Player', 'YoutubeiExtractor registered (search via youtubei.js, streaming via yt-dlp).');
     } catch (err) {
         logger.warn('Player', 'YoutubeiExtractor failed to activate — falling back to the bundled YouTube extractor.');
         logger.error('Player', 'YoutubeiExtractor registration error:', err);
