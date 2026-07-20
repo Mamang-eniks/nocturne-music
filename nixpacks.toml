@@ -1,10 +1,16 @@
-# yt-dlp is installed via pip (not the nix package) and pinned to the --pre
-# (nightly) channel specifically. YouTube changes its player/signature logic
-# frequently, and yt-dlp ships fixes for that almost immediately on the
-# nightly channel -- often days to weeks before those fixes land in a
+# yt-dlp is installed via pip on the --pre (nightly) channel -- YouTube changes
+# its player/signature logic frequently, and yt-dlp ships fixes for that almost
+# immediately on the nightly channel, often before those fixes land in a
 # "stable" release or in nixpkgs' own (slower-moving) package snapshot.
-# This install command runs fresh on every build, so Nocturne always starts
-# up with whatever is currently the newest available fix.
+#
+# The explicit `cp "$(command -v yt-dlp)" /usr/local/bin/yt-dlp` step matters:
+# pip installs it into the Nix-managed python3's own script directory, which is
+# only guaranteed to be on PATH during these build-time RUN commands (where the
+# Nix profile is active) -- not necessarily for the final container's runtime
+# PATH used when `node src/index.js` actually spawns the `yt-dlp` process.
+# /usr/local/bin is a standard location on PATH in any Linux container
+# regardless of Nix profile activation, so copying it there guarantees it's
+# reachable at runtime too.
 
 [phases.setup]
 nixPkgs = ["...", "python3", "python3Packages.pip"]
@@ -12,6 +18,7 @@ nixPkgs = ["...", "python3", "python3Packages.pip"]
 [phases.install]
 cmds = [
   "pip install --break-system-packages -q -U --pre yt-dlp",
+  "cp \"$(command -v yt-dlp)\" /usr/local/bin/yt-dlp",
   "npm install --omit=dev"
 ]
 
